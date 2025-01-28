@@ -2,7 +2,15 @@ import subprocess
 import re
 from collections import defaultdict
 
-def gen_diff_command(commit_from:str, commit_to:str, extensions:list[str], exclude_paths:list[str]):
+# コメント形式の定義（プログラミング言語別に設定）
+COMMENT_PATTERNS = [
+    r'^\s*#',           # Python, Shell, etc.
+    r'^\s*//',          # C, C++, Java, JavaScript, etc.
+    r'^\s*/\*.*\*/',    # Single-line block comment
+    r'^\s*\*',          # Block comment continuation
+]
+
+def gen_diff_command(commit_from:str, commit_to:str, extensions:list[str]=None, exclude_paths:list[str]=None):
     # ベースコマンド
     command = ['git', 'diff', f'{commit_from}..{commit_to}', '--unified=0']
 
@@ -18,6 +26,14 @@ def gen_diff_command(commit_from:str, commit_to:str, extensions:list[str], exclu
 
     return command
 
+def is_comment_line(line):
+    """
+    行がコメントかどうかを判定します。
+    """
+    for pattern in COMMENT_PATTERNS:
+        if re.match(pattern, line):
+            return True
+    return False
 
 def get_git_diff(command):
     """
@@ -53,16 +69,18 @@ def parse_git_diff(diff_output):
 
         # 削除行 (- で始まる行)
         if line.startswith('-') and not line.startswith('---'):
-            if current_file and not line.strip('-').strip():
-                # 空行の場合は無視
+            content = line.lstrip('-').strip()
+            if not content or is_comment_line(content):
+                # 空行またはコメント行は無視
                 continue
             if current_file:
                 file_stats[current_file]['deleted'] += 1
 
         # 追加行 (+ で始まる行)
         if line.startswith('+') and not line.startswith('+++'):
-            if current_file and not line.strip('+').strip():
-                # 空行の場合は無視
+            content = line.lstrip('+').strip()
+            if not content or is_comment_line(content):
+                # 空行またはコメント行は無視
                 continue
             if current_file:
                 file_stats[current_file]['added'] += 1
